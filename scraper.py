@@ -1,50 +1,86 @@
-import requests
+import asyncio
+import aiohttp
+import re
+from pathlib import Path
 
-SOURCES = [
+# =========================
+# AYARLAR
+# =========================
+PROXY_SOURCES = [
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
     "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt"
+    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+    "https://raw.githubusercontent.com/mertguvencli/http-proxy-list/main/proxy-list/data.txt",
 ]
 
-TIMEOUT = 5
+TEST_URL = "http://example.com"
+TIMEOUT = 1.2
+CONCURRENCY = 100
+OUTPUT_FILE = "http.txt"
 
-def is_alive(proxy):
+
+# =========================
+# PROXY ÇEKME
+# =========================
+async def fetch_proxies(session, url):
     try:
-        r = requests.get(
-            "http://httpbin.org/ip",
-            proxies={
-                "http": f"http://{proxy}",
-                "https": f"http://{proxy}"
-            },
-            timeout=TIMEOUT
-        )
-        return r.status_code == 200
+        async with session.get(url, timeout=10) as r:
+            text = await r.text()
+            return re.findall(r"\d+\.\d+\.\d+\.\d+:\d+", text)
     except:
-        return False
+        return []
 
 
-def main():
-    proxies = set()
-
-    for url in SOURCES:
+# =========================
+# PROXY TEST
+# =========================
+async def test_proxy(proxy, session, sem):
+    async with sem:
         try:
-            res = requests.get(url, timeout=10)
-            for line in res.text.splitlines():
-                if ":" in line:
-                    proxies.add(line.strip())
+            async with session.head(
+                TEST_URL,
+                proxy=f"http://{proxy}",
+                timeout=TIMEOUT,
+            ):
+                return proxy
         except:
-            pass
+            return None
 
-    alive = []
-    for proxy in proxies:
-        if is_alive(proxy):
-            alive.append(proxy)
 
-    with open("http.txt", "w") as f:
-        f.write("\n".join(alive))
+# =========================
+# ANA AKIŞ
+# =========================
+async def main():
+    timeout = aiohttp.ClientTimeout(total=TIMEOUT)
+    connector = aiohttp.TCPConnector(ssl=False)
 
-    print(f"Alive proxies: {len(alive)}")
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+        # Proxyleri çek
+        tasks = [fetch_proxies(session, url) for url in PROXY_SOURCES]
+        results = await asyncio.gather(*tasks)
+
+        proxies = set()
+        for r in results:
+            proxies.update(r)
+
+        print(f"[+] Toplam proxy: {len(proxies)}")
+
+        # Test et
+        sem = asyncio.Semaphore(CONCURRENCY)
+        test_tasks = [
+            test_proxy(proxy, session, sem) for proxy in proxies
+        ]
+
+        alive = []
+        for coro in asyncio.as_completed(test_tasks):
+            result = await coro
+            if result:
+                alive.append(result)
+
+        # Kaydet
+        Path(OUTPUT_FILE).write_text("\n".join(alive))
+        print(f"[✓] Çalışan proxy: {len(alive)}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
