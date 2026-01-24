@@ -10,6 +10,10 @@ PROXY_SOURCES = [
     "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
     "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
     "https://raw.githubusercontent.com/mertguvencli/http-proxy-list/main/proxy-list/data.txt",
+    "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+    "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http",
+    "https://www.proxy-list.download/api/v1/get?type=http",
+    
 ]
 
 TEST_URL = "http://example.com"
